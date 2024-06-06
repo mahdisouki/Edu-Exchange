@@ -1,4 +1,6 @@
-const users = require('../models/userModel');
+const users = require('../models/User.model');
+const products = require('../models/Product.model');
+const orders = require('../models/Commande.model');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
@@ -39,7 +41,7 @@ const userCtrl = {
             const isMatch = await bcrypt.compare(password, user.password);
             if (!isMatch) return res.status(400).json({ msg: 'Incorrect password' });
 
-            // If login is successful, create access token and refresh token
+            // If login is successful, create access token
             const accesstoken = createAccessToken({ id: user._id });
 
             res.json({ accesstoken });
@@ -69,38 +71,21 @@ const userCtrl = {
         try {
             const { nom, prenom, email, password, role } = req.body;
 
-            // Find the user by ID to get the current user data
             const currentUser = await users.findById(req.params.id);
-
             if (!currentUser) {
                 return res.status(404).json({ message: "User not found" });
             }
 
-            // Construct the update object
             const updateFields = {};
-
-            if (nom && nom !== currentUser.nom) {
-                updateFields.nom = nom;
-            }
-
-            if (prenom && prenom !== currentUser.prenom) {
-                updateFields.prenom = prenom;
-            }
-
-            if (email && email !== currentUser.email) {
-                updateFields.email = email;
-            }
-
+            if (nom && nom !== currentUser.nom) updateFields.nom = nom;
+            if (prenom && prenom !== currentUser.prenom) updateFields.prenom = prenom;
+            if (email && email !== currentUser.email) updateFields.email = email;
             if (password) {
                 const passwordHash = await bcrypt.hash(password, 10);
                 updateFields.password = passwordHash;
             }
+            if (role && role !== currentUser.role) updateFields.role = role;
 
-            if (role && role !== currentUser.role) {
-                updateFields.role = role;
-            }
-
-            // Perform the update with the modified fields
             await users.findOneAndUpdate({ _id: req.params.id }, updateFields);
             res.json({ msg: "Updated user" });
         } catch (error) {
@@ -111,6 +96,79 @@ const userCtrl = {
         try {
             await users.findByIdAndDelete(req.params.id);
             res.json({ msg: "Deleted user" });
+        } catch (error) {
+            return res.status(500).json({ message: error.message });
+        }
+    },
+    addToCart: async (req, res) => {
+        try {
+            const { userId, productId, quantity } = req.body;
+            const user = await users.findById(userId);
+            if (!user) return res.status(400).json({ msg: 'User does not exist.' });
+
+            const product = await products.findById(productId);
+            if (!product) return res.status(400).json({ msg: 'Product does not exist.' });
+
+            const cartItem = user.cart.find(item => item.product.equals(productId));
+            if (cartItem) {
+                cartItem.quantity += quantity;
+            } else {
+                user.cart.push({ product: productId, quantity });
+            }
+
+            await user.save();
+            res.json({ msg: 'Product added to cart' });
+        } catch (error) {
+            return res.status(500).json({ msg: error.message });
+        }
+    },
+    removeFromCart: async (req, res) => {
+        try {
+            const { userId, productId } = req.body;
+            const user = await users.findById(userId);
+            if (!user) return res.status(400).json({ msg: 'User does not exist.' });
+
+            user.cart = user.cart.filter(item => !item.product.equals(productId));
+            await user.save();
+            res.json({ msg: 'Product removed from cart' });
+        } catch (error) {
+            return res.status(500).json({ msg: error.message });
+        }
+    },
+    placeOrder: async (req, res) => {
+        try {
+            const { userId } = req.body;
+            const user = await users.findById(userId).populate('cart.product');
+            if (!user) return res.status(400).json({ msg: 'User does not exist.' });
+
+            const products = user.cart.map(item => ({
+                product: item.product._id,
+                quantity: item.quantity
+            }));
+
+            const totalAmount = user.cart.reduce((total, item) => total + item.product.price * item.quantity, 0);
+
+            const order = new orders({
+                user: userId,
+                products,
+                totalAmount
+            });
+
+            await order.save();
+
+            // Clear user's cart after placing order
+            user.cart = [];
+            await user.save();
+
+            res.json({ msg: 'Order placed', order });
+        } catch (error) {
+            return res.status(500).json({ msg: error.message });
+        }
+    },
+    getAllOrders: async (req, res) => {
+        try {
+            const allOrders = await orders.find({}).populate('user', 'nom prenom email').populate('products.product', 'name price');
+            res.status(200).send({ response: allOrders });
         } catch (error) {
             return res.status(500).json({ message: error.message });
         }

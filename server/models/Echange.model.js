@@ -1,11 +1,9 @@
 const mongoose = require("mongoose");
-
-const ProductSchema = new mongoose.Schema({
+const EchangeSchema = new mongoose.Schema({
   nom: { type: String, required: true },
   description: { type: String, required: true },
   prix: { type: Float32Array, required: true },
-  stock: { type: Number, required: true }
-  
+  quatityDispo: { type: String, required: true },
 });
 
-module.exports = mongoose.model("Product", ProductSchema);
+module.exports = mongoose.model("Echange", EchangeSchema);
