@@ -7,7 +7,7 @@ const jwt = require('jsonwebtoken');
 const userCtrl = {
     register: async (req, res) => {
         try {
-            const { nom, prenom, email, password } = req.body;
+            const { name, role, email, password } = req.body;
             const user = await users.findOne({ email });
             if (user)
                 return res.status(400).json({ msg: 'The email already exists.' });
@@ -18,7 +18,7 @@ const userCtrl = {
             // Password encryption
             const passwordHash = await bcrypt.hash(password, 10);
             const newUser = new users({
-                nom, prenom, email, password: passwordHash
+                name, role, email, password: passwordHash
             });
             await newUser.save();
 
@@ -44,7 +44,7 @@ const userCtrl = {
             // If login is successful, create access token
             const accesstoken = createAccessToken({ id: user._id });
 
-            res.json({ accesstoken });
+            res.json({ accesstoken , user });
 
         } catch (error) {
             return res.status(500).json({ msg: error.message });
@@ -61,8 +61,8 @@ const userCtrl = {
     },
     getAllUsers: async (req, res) => {
         try {
-            const allUsers = await users.find({});
-            res.status(200).send({ response: allUsers });
+            const allUsers = await users.find();
+            res.status(200).send(allUsers);
         } catch (error) {
             return res.status(500).json({ message: error.message });
         }
@@ -172,11 +172,47 @@ const userCtrl = {
         } catch (error) {
             return res.status(500).json({ message: error.message });
         }
+    },
+    getContacts: async (req, res) => {
+        try {
+            const user = await users.findById(req.params.userId).populate('contacts', 'name _id');
+            res.json(user.contacts);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    },
+    addContact: async (req, res) => {
+        try {
+            const { userId, contactId } = req.body;
+            console.log(req.body)
+            const user = await users.findById(userId);
+            if (!user.contacts.includes(contactId)) {
+                user.contacts.push(contactId);
+                await user.save();
+            }
+            res.status(200).json({ message: "Contact added successfully." });
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    },
+    searchUser: async (req, res) => {
+        try {
+            const { email } = req.query;
+            const user = await users.findOne({ email });
+
+            if (user) {
+                res.json({ _id: user._id, name: user.name, email: user.email });
+            } else {
+                res.status(404).json({ message: 'User not found' });
+            }
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
     }
 };
 
 const createAccessToken = (user) => {
-    return jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '11m' });
+    return jwt.sign(user, "ACCESS_TOKEN_SECRET", { expiresIn: '7d' });
 }
 
 module.exports = userCtrl;
